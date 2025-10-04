@@ -358,11 +358,31 @@ function App() {
       console.log(`✨ Suggestion fixed: "${suggestion.fixed}"`);
       console.log(`📋 Suggestion original: "${suggestion.original}"`);
       
-      // Validate line number
-      if (suggestion.line < 1 || suggestion.line > lines.length) {
-        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Code has ${lines.length} lines.`);
+      // Validate line number - allow appending to end
+      if (suggestion.line < 1) {
+        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Line numbers start from 1.`);
         isApplyingFix.current = false;
         return;
+      }
+      
+      // If line number is beyond current lines, we need to handle appending
+      if (suggestion.line > lines.length) {
+        console.log(`📌 Line ${suggestion.line} is beyond current lines (${lines.length}). Appending to end.`);
+        // Append to the last line instead
+        const lastLineIndex = lines.length - 1;
+        if (lastLineIndex >= 0) {
+          const lastLine = lines[lastLineIndex];
+          lines[lastLineIndex] = lastLine + '\n' + suggestion.fixed;
+          
+          const newCode = lines.join('\n');
+          setTimeout(() => {
+            setCode(newCode);
+            isApplyingFix.current = false;
+            addConsoleMessage('success', `✅ Appended to end: "${suggestion.fixed}"`);
+            setAiSuggestions(prev => prev.filter(s => s !== suggestion));
+          }, 100);
+          return;
+        }
       }
       
       // Create a copy of lines for modification

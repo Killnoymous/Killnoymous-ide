@@ -184,11 +184,12 @@ export class AIHelper {
           explanation: 'Added required setup() function with Serial initialization'
         };
       } else if (error.message.includes('void loop()') || error.message.includes('Arduino sketch must have a void loop()')) {
-        // Insert loop function at the end
+        // Insert loop function at the end - use last line or line 1 if empty
+        const insertLine = lines.length > 0 ? lines.length : 1;
         suggestion = {
-          line: lines.length + 1,
-          original: '',
-          fixed: '\nvoid loop() {\n  // Main code here\n}',
+          line: insertLine,
+          original: lines[insertLine - 1] || '',
+          fixed: (lines[insertLine - 1] || '') + '\nvoid loop() {\n  // Main code here\n}',
           explanation: 'Added required loop() function at the end of the sketch'
         };
       } else if (error.message.includes('Multiple statements on same line')) {
@@ -255,10 +256,11 @@ export class AIHelper {
       } else if (error.message.includes('unclosed brace')) {
         const braceCount = this.countBraces(code);
         if (braceCount > 0) {
+          const insertLine = lines.length > 0 ? lines.length : 1;
           suggestion = {
-            line: lines.length + 1,
-            original: '',
-            fixed: '}'.repeat(braceCount),
+            line: insertLine,
+            original: lines[insertLine - 1] || '',
+            fixed: (lines[insertLine - 1] || '') + '\n' + '}'.repeat(braceCount),
             explanation: `Added ${braceCount} missing closing brace(s) at end of code`
           };
         }

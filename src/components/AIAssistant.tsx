@@ -199,15 +199,19 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
 
           // Suggest Serial.begin if missing
           if (trimmed.includes('void setup()') && !code.includes('Serial.begin')) {
-            suggestions.push({
-              id: 'serial-begin',
-              type: 'optimization',
-              title: 'Add Serial.begin for debugging',
-              description: 'Enable serial communication for debugging',
-              code: 'Serial.begin(9600);',
-              line: lineNum + 1,
-              confidence: 0.8
-            });
+            // Insert Serial.begin inside the setup function, not after it
+            const nextLineIndex = lineNum; // lineNum is already 1-based, so this points to next line
+            if (nextLineIndex <= lines.length) {
+              suggestions.push({
+                id: 'serial-begin',
+                type: 'optimization',
+                title: 'Add Serial.begin for debugging',
+                description: 'Enable serial communication for debugging',
+                code: '  Serial.begin(9600);',
+                line: nextLineIndex,
+                confidence: 0.8
+              });
+            }
           }
         });
 
@@ -225,13 +229,14 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
         }
 
         if (!code.includes('void loop()')) {
+          const insertLine = lines.length > 0 ? lines.length : 1;
           suggestions.push({
             id: 'loop-function',
             type: 'completion',
             title: 'Add loop() function',
             description: 'Arduino sketches require loop() function',
             code: '\nvoid loop() {\n  // Main code here\n}',
-            line: lines.length + 1,
+            line: insertLine,
             confidence: 0.95
           });
         }
