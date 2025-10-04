@@ -43,12 +43,31 @@ export class ArduinoCompiler {
           return; // Skip further analysis for this line
         }
 
-        // Check for duplicate function declarations
-        if (trimmed.match(/^(void|int|float|char|bool|String)\s+\w+\s*\([^)]*\)\s*;/)) {
-          const funcMatch = trimmed.match(/^(void|int|float|char|bool|String)\s+(\w+)\s*\([^)]*\)\s*;/);
+        // Check for duplicate function declarations and similar Arduino functions
+        if (trimmed.match(/^(void|int|float|char|bool|String)\s+\w+\s*\([^)]*\)\s*[;{]/)) {
+          const funcMatch = trimmed.match(/^(void|int|float|char|bool|String)\s+(\w+)\s*\([^)]*\)\s*[;{]/);
           if (funcMatch) {
             const funcName = funcMatch[2];
-            if (functionDeclarations.has(funcName)) {
+            
+            // Check for misspelled Arduino functions
+            const misspelledArduinoFunctions = {
+              'lop': 'loop',
+              'loo': 'loop', 
+              'looop': 'loop',
+              'setu': 'setup',
+              'setpu': 'setup',
+              'setp': 'setup'
+            };
+            
+            if (misspelledArduinoFunctions[funcName]) {
+              const correctName = misspelledArduinoFunctions[funcName];
+              errors.push({
+                line: lineNum,
+                column: 0,
+                message: `COMPILATION ERROR: Function '${funcName}' appears to be misspelled. Did you mean '${correctName}'?`,
+                severity: 'error'
+              });
+            } else if (functionDeclarations.has(funcName)) {
               errors.push({
                 line: lineNum,
                 column: 0,

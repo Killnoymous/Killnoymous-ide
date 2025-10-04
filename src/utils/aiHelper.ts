@@ -136,7 +136,21 @@ export class AIHelper {
       let suggestion: AIFixSuggestion | null = null;
 
       // Enhanced error detection and fixes
-      if (error.message.includes('Expected `;`') || error.message.includes('SYNTAX ERROR: Expected')) {
+      
+      // Handle misspelled Arduino functions
+      if (error.message.includes('appears to be misspelled')) {
+        const misspelledMatch = error.message.match(/Function '(\w+)' appears to be misspelled\. Did you mean '(\w+)'\?/);
+        if (misspelledMatch) {
+          const [, wrongName, correctName] = misspelledMatch;
+          const fixedLine = line.replace(`void ${wrongName}(`, `void ${correctName}(`);
+          suggestion = {
+            line: error.line,
+            original: line,
+            fixed: fixedLine,
+            explanation: `Fixed misspelled function name from '${wrongName}()' to '${correctName}()'`
+          };
+        }
+      } else if (error.message.includes('Expected `;`') || error.message.includes('SYNTAX ERROR: Expected')) {
         // Only suggest semicolon if line doesn't already end with one
         if (!line.trim().endsWith(';')) {
           suggestion = {
@@ -190,13 +204,54 @@ export class AIHelper {
           };
         }
       } else if (error.message.includes('Redefinition of function') || error.message.includes('Duplicate function declaration')) {
-        // Remove duplicate function declaration
-        suggestion = {
-          line: error.line,
-          original: line,
-          fixed: '', // Remove the duplicate line
-          explanation: 'Removed duplicate function declaration'
-        };
+        // Smart handling for Arduino function duplicates
+        const funcMatch = line.match(/void\s+(\w+)\s*\(/);
+        if (funcMatch) {
+          const funcName = funcMatch[1];
+          
+          // Check if this is a misspelled Arduino function
+          const correctArduinoFunctions = {
+            'lop': 'loop',
+            'setup': 'setup',
+            'loo': 'loop',
+            'looop': 'loop',
+            'setu': 'setup',
+            'setpu': 'setup'
+          };
+          
+          if (correctArduinoFunctions[funcName]) {
+            const correctName = correctArduinoFunctions[funcName];
+            // Check if correct function already exists in code
+            const hasCorrectFunction = code.includes(`void ${correctName}(`);
+            
+            if (hasCorrectFunction) {
+              // Remove the incorrect function
+              suggestion = {
+                line: error.line,
+                original: line,
+                fixed: '', // Remove the incorrect duplicate
+                explanation: `Removed incorrect function '${funcName}()' - correct '${correctName}()' already exists`
+              };
+            } else {
+              // Fix the function name
+              const fixedLine = line.replace(`void ${funcName}(`, `void ${correctName}(`);
+              suggestion = {
+                line: error.line,
+                original: line,
+                fixed: fixedLine,
+                explanation: `Fixed function name from '${funcName}()' to '${correctName}()'`
+              };
+            }
+          } else {
+            // Regular duplicate removal
+            suggestion = {
+              line: error.line,
+              original: line,
+              fixed: '', // Remove the duplicate line
+              explanation: 'Removed duplicate function declaration'
+            };
+          }
+        }
       } else if (error.message.includes('unclosed brace')) {
         const braceCount = this.countBraces(code);
         if (braceCount > 0) {
@@ -325,11 +380,60 @@ export class AIHelper {
     
     // Check for common Arduino issues
     let hasSetup = false;
+    let hasLoop = false;
     let hasSerialBegin = false;
+    const functionLines: { [key: string]: number } = {};
     
-    lines.forEach((line) => {
-      if (line.includes('void setup()')) hasSetup = true;
-      if (line.includes('Serial.begin')) hasSerialBegin = true;
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (trimmed.includes('void setup()')) {
+        hasSetup = true;
+        functionLines['setup'] = index + 1;
+      }
+      if (trimmed.includes('void loop()')) {
+        hasLoop = true;
+        functionLines['loop'] = index + 1;
+      }
+      if (trimmed.includes('Serial.begin')) hasSerialBegin = true;
+      
+      // Check for misspelled Arduino functions
+      const misspelledMatch = trimmed.match(/void\s+(lop|loo|looop|setu|setpu|setp)\s*\(/);
+      if (misspelledMatch) {
+        const wrongName = misspelledMatch[1];
+        const correctNames: { [key: string]: string } = {
+          'lop': 'loop',
+          'loo': 'loop',
+          'looop': 'loop',
+          'setu': 'setup',
+          'setpu': 'setup',
+          'setp': 'setup'
+        };
+        
+        const correctName = correctNames[wrongName];
+        if (correctName) {
+          // Check if correct function already exists
+          const hasCorrectFunction = code.includes(`void ${correctName}(`);
+          
+          if (hasCorrectFunction) {
+            // Remove the misspelled function
+            suggestions.push({
+              line: index + 1,
+              original: line,
+              fixed: '',
+              explanation: `Removed misspelled function '${wrongName}()' - correct '${correctName}()' already exists`
+            });
+          } else {
+            // Fix the function name
+            const fixedLine = line.replace(`void ${wrongName}(`, `void ${correctName}(`);
+            suggestions.push({
+              line: index + 1,
+              original: line,
+              fixed: fixedLine,
+              explanation: `Fixed misspelled function name from '${wrongName}()' to '${correctName}()'`
+            });
+          }
+        }
+      }
     });
     
     if (hasSetup && !hasSerialBegin) {
@@ -340,6 +444,90 @@ export class AIHelper {
         explanation: 'Added Serial.begin(9600) for debugging and communication'
       });
     }
+    
+    return suggestions;
+  }
+
+  // Method to analyze and provide smart Arduino-specific suggestions
+  static getSmartArduinoSuggestions(code: string): AIFixSuggestion[] {
+    const suggestions: AIFixSuggestion[] = [];
+    const lines = code.split('\n');
+    
+    // Track Arduino functions
+    const arduinoFunctions: { [key: string]: number[] } = {
+      'setup': [],
+      'loop': [],
+      'lop': [],
+      'loo': [],
+      'looop': [],
+      'setu': [],
+      'setpu': [],
+      'setp': []
+    };
+    
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      Object.keys(arduinoFunctions).forEach(funcName => {
+        if (trimmed.includes(`void ${funcName}(`)) {
+          arduinoFunctions[funcName].push(index + 1);
+        }
+      });
+    });
+    
+    // Handle misspelled functions intelligently
+    const misspelledFunctions = ['lop', 'loo', 'looop', 'setu', 'setpu', 'setp'];
+    const correctMappings: { [key: string]: string } = {
+      'lop': 'loop',
+      'loo': 'loop', 
+      'looop': 'loop',
+      'setu': 'setup',
+      'setpu': 'setup',
+      'setp': 'setup'
+    };
+    
+    misspelledFunctions.forEach(wrongName => {
+      const correctName = correctMappings[wrongName];
+      const wrongLines = arduinoFunctions[wrongName];
+      const correctLines = arduinoFunctions[correctName];
+      
+      if (wrongLines.length > 0) {
+        if (correctLines.length > 0) {
+          // Correct function exists, remove wrong ones
+          wrongLines.forEach(lineNum => {
+            const line = lines[lineNum - 1];
+            suggestions.push({
+              line: lineNum,
+              original: line,
+              fixed: '',
+              explanation: `Removed misspelled '${wrongName}()' - correct '${correctName}()' already exists at line ${correctLines[0]}`
+            });
+          });
+        } else {
+          // No correct function, fix the first wrong one and remove others
+          wrongLines.forEach((lineNum, index) => {
+            const line = lines[lineNum - 1];
+            if (index === 0) {
+              // Fix the first occurrence
+              const fixedLine = line.replace(`void ${wrongName}(`, `void ${correctName}(`);
+              suggestions.push({
+                line: lineNum,
+                original: line,
+                fixed: fixedLine,
+                explanation: `Fixed misspelled function name from '${wrongName}()' to '${correctName}()'`
+              });
+            } else {
+              // Remove additional occurrences
+              suggestions.push({
+                line: lineNum,
+                original: line,
+                fixed: '',
+                explanation: `Removed duplicate misspelled function '${wrongName}()'`
+              });
+            }
+          });
+        }
+      }
+    });
     
     return suggestions;
   }

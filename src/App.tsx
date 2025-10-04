@@ -325,9 +325,12 @@ function App() {
       
       // Also get contextual suggestions
       const contextualSuggestions = AIHelper.getContextualSuggestions(code);
-      if (contextualSuggestions.length > 0) {
-        setAiSuggestions(prev => [...prev, ...contextualSuggestions]);
-        addConsoleMessage('ai', `Also found ${contextualSuggestions.length} contextual suggestion(s) for Arduino best practices.`);
+      const smartSuggestions = AIHelper.getSmartArduinoSuggestions(code);
+      
+      const allContextualSuggestions = [...contextualSuggestions, ...smartSuggestions];
+      if (allContextualSuggestions.length > 0) {
+        setAiSuggestions(prev => [...prev, ...allContextualSuggestions]);
+        addConsoleMessage('ai', `Also found ${allContextualSuggestions.length} Arduino-specific suggestion(s) for best practices.`);
       }
     } catch (error) {
       console.error('AI analysis error:', error);
