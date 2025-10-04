@@ -29,6 +29,7 @@ export class ArduinoCompiler {
       }
 
       if (trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*')) {
+        // Check for missing semicolons
         if (
           !trimmed.endsWith(';') &&
           !trimmed.endsWith('{') &&
@@ -43,6 +44,9 @@ export class ArduinoCompiler {
           !trimmed.includes('do') &&
           !trimmed.includes('switch (') &&
           !trimmed.includes('case ') &&
+          !trimmed.includes('return') &&
+          !trimmed.includes('break') &&
+          !trimmed.includes('continue') &&
           trimmed.length > 0
         ) {
           errors.push({
@@ -51,6 +55,50 @@ export class ArduinoCompiler {
             message: 'Expected `;` at end of statement',
             severity: 'error'
           });
+        }
+
+        // Check for common Arduino function syntax issues
+        if (trimmed.includes('pinMode') && !trimmed.includes('pinMode(')) {
+          errors.push({
+            line: lineNum,
+            column: trimmed.indexOf('pinMode') + 7,
+            message: 'pinMode function call missing opening parenthesis',
+            severity: 'error'
+          });
+        }
+
+        if (trimmed.includes('digitalWrite') && !trimmed.includes('digitalWrite(')) {
+          errors.push({
+            line: lineNum,
+            column: trimmed.indexOf('digitalWrite') + 11,
+            message: 'digitalWrite function call missing opening parenthesis',
+            severity: 'error'
+          });
+        }
+
+        if (trimmed.includes('digitalRead') && !trimmed.includes('digitalRead(')) {
+          errors.push({
+            line: lineNum,
+            column: trimmed.indexOf('digitalRead') + 10,
+            message: 'digitalRead function call missing opening parenthesis',
+            severity: 'error'
+          });
+        }
+
+        // Check for variable declaration issues
+        if (trimmed.includes('=') && !trimmed.includes('int ') && !trimmed.includes('float ') && 
+            !trimmed.includes('char ') && !trimmed.includes('bool ') && !trimmed.includes('String ') &&
+            !trimmed.includes('const ') && !trimmed.includes('static ') && 
+            !trimmed.includes('void setup') && !trimmed.includes('void loop')) {
+          const equalIndex = trimmed.indexOf('=');
+          if (equalIndex > 0 && !trimmed.substring(0, equalIndex).includes(' ')) {
+            errors.push({
+              line: lineNum,
+              column: 0,
+              message: 'Variable declaration missing type (int, float, char, etc.)',
+              severity: 'warning'
+            });
+          }
         }
       }
     });

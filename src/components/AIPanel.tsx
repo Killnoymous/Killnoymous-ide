@@ -11,10 +11,18 @@ interface AIPanelProps {
 
 export function AIPanel({ suggestions, onApplyFix, onClose, theme }: AIPanelProps) {
   const [appliedSuggestions, setAppliedSuggestions] = useState<Set<number>>(new Set());
+  const [isApplying, setIsApplying] = useState<Set<number>>(new Set());
 
-  const handleApply = (index: number, suggestion: AIFixSuggestion) => {
-    onApplyFix(suggestion);
-    setAppliedSuggestions(new Set(appliedSuggestions).add(index));
+  const handleApply = async (index: number, suggestion: AIFixSuggestion) => {
+    setIsApplying(new Set([index]));
+    try {
+      await onApplyFix(suggestion);
+      setAppliedSuggestions(new Set(appliedSuggestions).add(index));
+    } catch (error) {
+      console.error('Failed to apply suggestion:', error);
+    } finally {
+      setIsApplying(new Set());
+    }
   };
 
   if (suggestions.length === 0) return null;
@@ -41,6 +49,7 @@ export function AIPanel({ suggestions, onApplyFix, onClose, theme }: AIPanelProp
       <div className="overflow-y-auto max-h-[520px] p-4 space-y-4">
         {suggestions.map((suggestion, index) => {
           const isApplied = appliedSuggestions.has(index);
+          const isApplyingFix = isApplying.has(index);
 
           return (
             <div
@@ -53,10 +62,12 @@ export function AIPanel({ suggestions, onApplyFix, onClose, theme }: AIPanelProp
                 <span className="text-xs font-medium text-blue-600">Line {suggestion.line}</span>
                 <button
                   onClick={() => handleApply(index, suggestion)}
-                  disabled={isApplied}
+                  disabled={isApplied || isApplyingFix}
                   className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
                     isApplied
                       ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                      : isApplyingFix
+                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
                 >
@@ -64,6 +75,11 @@ export function AIPanel({ suggestions, onApplyFix, onClose, theme }: AIPanelProp
                     <>
                       <Check className="w-3 h-3" />
                       Applied
+                    </>
+                  ) : isApplyingFix ? (
+                    <>
+                      <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                      Applying...
                     </>
                   ) : (
                     <>

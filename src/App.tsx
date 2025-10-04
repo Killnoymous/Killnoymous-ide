@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
 import { AIPanel } from './components/AIPanel';
+import { AIAssistant } from './components/AIAssistant';
 import { storage } from './utils/storage';
 import { ArduinoCompiler } from './utils/arduinoCompiler';
 import { AIHelper } from './utils/aiHelper';
@@ -23,6 +24,8 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AIFixSuggestion[]>([]);
   const [showAIPanel, setShowAIPanel] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState(true);
+  const [realTimeErrors, setRealTimeErrors] = useState<CompilationError[]>([]);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const serialUploader = useRef<SerialUploader>(new SerialUploader());
 
@@ -253,34 +256,100 @@ function App() {
   };
 
   const handleAutoFix = async () => {
-    if (errors.length === 0) return;
+    if (errors.length === 0) {
+      addConsoleMessage('warning', 'No errors found to fix. Try compiling first to detect issues.');
+      return;
+    }
 
     addConsoleMessage('ai', 'AI analyzing errors and generating fixes...');
     setShowAIPanel(true);
 
     try {
       const suggestions = await AIHelper.analyzeAndFix(code, errors);
-      setAiSuggestions(suggestions);
-      addConsoleMessage('ai', `Generated ${suggestions.length} fix suggestion(s)`);
+      
+      if (suggestions.length === 0) {
+        addConsoleMessage('warning', 'No automatic fixes available for these errors. Manual intervention required.');
+        setShowAIPanel(false);
+        return;
+      }
+
+      // Validate suggestions before showing them
+      const validSuggestions = suggestions.filter(suggestion => 
+        AIHelper.validateSuggestion(code, suggestion)
+      );
+
+      if (validSuggestions.length === 0) {
+        addConsoleMessage('warning', 'Generated suggestions are not applicable to current code. Please check your code manually.');
+        setShowAIPanel(false);
+        return;
+      }
+
+      setAiSuggestions(validSuggestions);
+      addConsoleMessage('ai', `Generated ${validSuggestions.length} fix suggestion(s). Click "Apply Fix" to use them.`);
+      
+      // Also get contextual suggestions
+      const contextualSuggestions = AIHelper.getContextualSuggestions(code);
+      if (contextualSuggestions.length > 0) {
+        setAiSuggestions(prev => [...prev, ...contextualSuggestions]);
+        addConsoleMessage('ai', `Also found ${contextualSuggestions.length} contextual suggestion(s) for Arduino best practices.`);
+      }
     } catch (error) {
-      addConsoleMessage('error', 'Failed to generate AI suggestions');
+      console.error('AI analysis error:', error);
+      addConsoleMessage('error', 'Failed to generate AI suggestions. Please try again or fix errors manually.');
+      setShowAIPanel(false);
     }
   };
 
   const handleApplyFix = (suggestion: AIFixSuggestion) => {
-    const lines = code.split('\n');
-    if (suggestion.original) {
-      lines[suggestion.line - 1] = suggestion.fixed;
-    } else {
-      lines.splice(suggestion.line - 1, 0, suggestion.fixed);
+    try {
+      const lines = code.split('\n');
+      
+      // Validate the suggestion before applying
+      if (!AIHelper.validateSuggestion(code, suggestion)) {
+        addConsoleMessage('error', 'Cannot apply fix: suggestion is no longer valid for current code.');
+        return;
+      }
+
+      if (suggestion.original && suggestion.original.trim() !== '') {
+        // Replace existing line
+        if (lines[suggestion.line - 1] === suggestion.original) {
+          lines[suggestion.line - 1] = suggestion.fixed;
+        } else {
+          addConsoleMessage('warning', 'Code has changed since suggestion was generated. Applying fix anyway.');
+          lines[suggestion.line - 1] = suggestion.fixed;
+        }
+      } else {
+        // Insert new line
+        if (suggestion.line <= lines.length) {
+          lines.splice(suggestion.line - 1, 0, suggestion.fixed);
+        } else {
+          // Add at the end
+          lines.push(suggestion.fixed);
+        }
+      }
+      
+      const newCode = lines.join('\n');
+      setCode(newCode);
+      addConsoleMessage('success', `Applied fix at line ${suggestion.line}: ${suggestion.explanation}`);
+      
+      // Clear the AI panel after successful application
+      setTimeout(() => {
+        setShowAIPanel(false);
+        setAiSuggestions([]);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error applying fix:', error);
+      addConsoleMessage('error', 'Failed to apply fix. Please try again or fix manually.');
     }
-    const newCode = lines.join('\n');
-    setCode(newCode);
-    addConsoleMessage('ai', `Applied fix at line ${suggestion.line}: ${suggestion.explanation}`);
   };
 
   const handleCodeChange = (newCode: string) => {
     setCode(newCode);
+  };
+
+  const handleRealTimeError = (errors: CompilationError[]) => {
+    setRealTimeErrors(errors);
   };
 
   const handleUpload = async () => {
@@ -330,11 +399,13 @@ function App() {
         onAutoFix={handleAutoFix}
         onUpload={handleUpload}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onToggleAI={() => setShowAIAssistant(!showAIAssistant)}
         theme={theme}
         isCompiling={isCompiling}
         isUploading={isUploading}
         hasErrors={errors.some(e => e.severity === 'error')}
         isConnected={isConnected}
+        showAI={showAIAssistant}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -363,6 +434,7 @@ function App() {
               errors={errors}
               theme={theme}
               onCompile={handleCompile}
+              onRealTimeError={handleRealTimeError}
             />
           </div>
 
@@ -381,6 +453,15 @@ function App() {
             onApplyFix={handleApplyFix}
             onClose={() => setShowAIPanel(false)}
             theme={theme}
+          />
+        )}
+
+        {showAIAssistant && (
+          <AIAssistant
+            code={code}
+            errors={[...errors, ...realTimeErrors]}
+            theme={theme}
+            onApplySuggestion={handleApplyFix}
           />
         )}
       </div>

@@ -1,4 +1,4 @@
-import { Play, CheckCircle, Wrench, Moon, Sun, Zap, Info, Upload } from 'lucide-react';
+import { Play, CheckCircle, Wrench, Moon, Sun, Zap, Info, Upload, Bot } from 'lucide-react';
 
 interface ToolbarProps {
   onCompile: () => void;
@@ -6,11 +6,13 @@ interface ToolbarProps {
   onAutoFix: () => void;
   onUpload: () => void;
   onToggleTheme: () => void;
+  onToggleAI: () => void;
   theme: 'light' | 'dark';
   isCompiling: boolean;
   isUploading: boolean;
   hasErrors: boolean;
   isConnected: boolean;
+  showAI: boolean;
 }
 
 export function Toolbar({
@@ -19,11 +21,13 @@ export function Toolbar({
   onAutoFix,
   onUpload,
   onToggleTheme,
+  onToggleAI,
   theme,
   isCompiling,
   isUploading,
   hasErrors,
-  isConnected
+  isConnected,
+  showAI
 }: ToolbarProps) {
   return (
     <div className={`flex items-center justify-between px-4 py-3 border-b ${
@@ -80,6 +84,21 @@ export function Toolbar({
           <Upload className="w-4 h-4" />
           <span className="text-sm font-medium">
             {isUploading ? 'Uploading...' : isConnected ? 'Upload' : 'Connect & Upload'}
+          </span>
+        </button>
+
+        <button
+          onClick={onToggleAI}
+          className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
+            showAI
+              ? 'bg-purple-600 hover:bg-purple-700 text-white'
+              : 'bg-gray-600 hover:bg-gray-700 text-white'
+          }`}
+          title="Toggle AI Assistant"
+        >
+          <Bot className="w-4 h-4" />
+          <span className="text-sm font-medium">
+            {showAI ? 'AI On' : 'AI Off'}
           </span>
         </button>
       </div>
