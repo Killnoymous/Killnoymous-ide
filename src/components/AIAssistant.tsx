@@ -61,13 +61,16 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
           if (trimmed.includes('=') && !trimmed.includes('int ') && !trimmed.includes('float ') && 
               !trimmed.includes('bool ') && !trimmed.includes('char ') && !trimmed.includes('String ')) {
             const varName = trimmed.split('=')[0].trim();
-            if (varName && !varName.includes(' ')) {
+            if (varName && !varName.includes(' ') && !varName.includes('void') && !varName.includes('(')) {
+              const indentation = line.match(/^\s*/)?.[0] || '';
+              const fixedLine = indentation + `int ${trimmed}`;
+              
               suggestions.push({
                 id: `var-${lineNum}`,
                 type: 'fix',
                 title: `Add variable type for ${varName}`,
                 description: `Declare ${varName} with proper data type`,
-                code: `int ${trimmed}`,
+                code: fixedLine,
                 line: lineNum,
                 confidence: 0.9
               });
@@ -96,12 +99,16 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
              trimmed.includes('delay('));
 
           if (needsSemicolon) {
+            // Preserve original indentation
+            const indentation = line.match(/^\s*/)?.[0] || '';
+            const fixedLine = indentation + trimmed + ';';
+            
             suggestions.push({
               id: `semicolon-${lineNum}`,
               type: 'fix',
               title: 'Add missing semicolon',
               description: 'Statement should end with semicolon',
-              code: `${trimmed};`,
+              code: fixedLine,
               line: lineNum,
               confidence: 0.95
             });
@@ -122,13 +129,16 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
             } else if (trimmed.includes('pinMode(') && !trimmed.includes(',')) {
               // Try to fix common pinMode patterns
               if (trimmed.match(/pinMode\(\s*\d+\s+\w+\s*\)/)) {
+                const indentation = line.match(/^\s*/)?.[0] || '';
                 const fixed = trimmed.replace(/pinMode\((\s*\d+)\s+(\w+)\s*\)/, 'pinMode($1, $2)');
+                const fixedLine = indentation + fixed;
+                
                 suggestions.push({
                   id: `pinmode-comma-${lineNum}`,
                   type: 'fix',
                   title: 'Fix pinMode syntax - add comma',
                   description: 'pinMode requires comma between pin and mode',
-                  code: fixed,
+                  code: fixedLine,
                   line: lineNum,
                   confidence: 0.95
                 });
@@ -160,13 +170,16 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
             } else if (trimmed.includes('digitalWrite(') && !trimmed.includes(',')) {
               // Try to fix common digitalWrite patterns
               if (trimmed.match(/digitalWrite\(\s*\d+\s+\w+\s*\)/)) {
+                const indentation = line.match(/^\s*/)?.[0] || '';
                 const fixed = trimmed.replace(/digitalWrite\((\s*\d+)\s+(\w+)\s*\)/, 'digitalWrite($1, $2)');
+                const fixedLine = indentation + fixed;
+                
                 suggestions.push({
                   id: `digitalwrite-comma-${lineNum}`,
                   type: 'fix',
                   title: 'Fix digitalWrite syntax - add comma',
                   description: 'digitalWrite requires comma between pin and value',
-                  code: fixed,
+                  code: fixedLine,
                   line: lineNum,
                   confidence: 0.95
                 });
@@ -230,6 +243,7 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
 
   const handleApplySuggestion = (suggestion: AISuggestion) => {
     if (suggestion.code) {
+      console.log('🤖 AI Assistant applying suggestion:', suggestion);
       const lines = code.split('\n');
       const targetLineIndex = (suggestion.line || 1) - 1;
       
@@ -239,12 +253,16 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
         originalContent = lines[targetLineIndex];
       }
       
+      console.log(`🎯 AI Assistant - Line ${suggestion.line}: "${originalContent}" → "${suggestion.code}"`);
+      
       const aiSuggestion: AIFixSuggestion = {
         line: suggestion.line || 1,
         original: originalContent,
         fixed: suggestion.code,
         explanation: suggestion.description
       };
+      
+      console.log('📤 AI Assistant sending suggestion to App:', aiSuggestion);
       onApplySuggestion(aiSuggestion);
     }
   };

@@ -341,8 +341,15 @@ function App() {
 
   const handleApplyFix = (suggestion: AIFixSuggestion) => {
     try {
+      console.log('🔧 Applying fix:', suggestion);
       const lines = code.split('\n');
       const targetLineIndex = suggestion.line - 1;
+      
+      console.log(`📍 Target line ${suggestion.line} (index ${targetLineIndex})`);
+      console.log(`📝 Current code has ${lines.length} lines`);
+      console.log(`🎯 Current line content: "${lines[targetLineIndex] || 'UNDEFINED'}"`);
+      console.log(`✨ Suggestion fixed: "${suggestion.fixed}"`);
+      console.log(`📋 Suggestion original: "${suggestion.original}"`);
       
       // Handle different cases for line numbers
       if (suggestion.line < 1) {
@@ -352,6 +359,7 @@ function App() {
       
       // If line number is beyond current lines, we're appending
       if (suggestion.line > lines.length) {
+        console.log('📌 Appending new content beyond current lines');
         // Append new lines
         const newLines = [...lines];
         
@@ -376,25 +384,30 @@ function App() {
       } else {
         // Line exists, replace or modify it
         const currentLine = lines[targetLineIndex] || '';
+        console.log('🔄 Replacing existing line');
         
         // Handle empty fixed content (deletion)
         if (suggestion.fixed.trim() === '') {
+          console.log('🗑️ Deleting line');
           lines.splice(targetLineIndex, 1);
           addConsoleMessage('success', `Removed line ${suggestion.line}: "${currentLine}"`);
         } else {
           // Handle multi-line fixes
           if (suggestion.fixed.includes('\n')) {
+            console.log('📄 Multi-line replacement');
             const fixedLines = suggestion.fixed.split('\n');
             lines.splice(targetLineIndex, 1, ...fixedLines);
             addConsoleMessage('success', `Replaced line ${suggestion.line} with ${fixedLines.length} lines`);
           } else {
-            // Single line replacement
+            // Single line replacement - THIS IS THE KEY PART
+            console.log(`🎯 Single line replacement: "${currentLine}" → "${suggestion.fixed}"`);
             lines[targetLineIndex] = suggestion.fixed;
             addConsoleMessage('success', `Fixed line ${suggestion.line}: "${suggestion.fixed}"`);
           }
         }
         
         const newCode = lines.join('\n');
+        console.log('✅ Setting new code');
         setCode(newCode);
       }
       
