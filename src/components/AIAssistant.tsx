@@ -74,10 +74,28 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
             }
           }
 
-          // Suggest missing semicolons
-          if (trimmed && !trimmed.endsWith(';') && !trimmed.endsWith('{') && !trimmed.endsWith('}') &&
-              !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.includes('void setup') &&
-              !trimmed.includes('void loop') && !trimmed.includes('if (') && !trimmed.includes('else')) {
+          // Suggest missing semicolons (more accurate)
+          const needsSemicolon = trimmed && 
+            !trimmed.endsWith(';') && 
+            !trimmed.endsWith('{') && 
+            !trimmed.endsWith('}') &&
+            !trimmed.startsWith('//') && 
+            !trimmed.startsWith('/*') && 
+            !trimmed.includes('void setup') &&
+            !trimmed.includes('void loop') && 
+            !trimmed.includes('if (') && 
+            !trimmed.includes('else') &&
+            !trimmed.includes('for (') && 
+            !trimmed.includes('while (') &&
+            !trimmed.includes('#include') && 
+            !trimmed.includes('#define') &&
+            (trimmed.includes('=') || 
+             trimmed.includes('pinMode') || 
+             trimmed.includes('digitalWrite') || 
+             trimmed.includes('Serial.') ||
+             trimmed.includes('delay('));
+
+          if (needsSemicolon) {
             suggestions.push({
               id: `semicolon-${lineNum}`,
               type: 'fix',
@@ -89,17 +107,81 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
             });
           }
 
-          // Suggest Arduino best practices
-          if (trimmed.includes('pinMode') && !trimmed.includes(',')) {
-            suggestions.push({
-              id: `pinmode-${lineNum}`,
-              type: 'fix',
-              title: 'Fix pinMode syntax',
-              description: 'pinMode requires comma between parameters',
-              code: trimmed.replace('pinMode(', 'pinMode(').replace(' ', ', '),
-              line: lineNum,
-              confidence: 0.9
-            });
+          // Suggest Arduino function fixes
+          if (trimmed.includes('pinMode')) {
+            if (!trimmed.includes('(') || !trimmed.includes(')')) {
+              suggestions.push({
+                id: `pinmode-paren-${lineNum}`,
+                type: 'fix',
+                title: 'Fix pinMode syntax - add parentheses',
+                description: 'pinMode function needs parentheses',
+                code: trimmed.replace('pinMode', 'pinMode(pin, mode)'),
+                line: lineNum,
+                confidence: 0.9
+              });
+            } else if (trimmed.includes('pinMode(') && !trimmed.includes(',')) {
+              // Try to fix common pinMode patterns
+              if (trimmed.match(/pinMode\(\s*\d+\s+\w+\s*\)/)) {
+                const fixed = trimmed.replace(/pinMode\((\s*\d+)\s+(\w+)\s*\)/, 'pinMode($1, $2)');
+                suggestions.push({
+                  id: `pinmode-comma-${lineNum}`,
+                  type: 'fix',
+                  title: 'Fix pinMode syntax - add comma',
+                  description: 'pinMode requires comma between pin and mode',
+                  code: fixed,
+                  line: lineNum,
+                  confidence: 0.95
+                });
+              } else {
+                suggestions.push({
+                  id: `pinmode-comma-${lineNum}`,
+                  type: 'fix',
+                  title: 'Fix pinMode syntax',
+                  description: 'pinMode requires two parameters: pinMode(pin, mode)',
+                  code: 'pinMode(pin, OUTPUT); // Example: replace with actual pin number',
+                  line: lineNum,
+                  confidence: 0.8
+                });
+              }
+            }
+          }
+
+          if (trimmed.includes('digitalWrite')) {
+            if (!trimmed.includes('(') || !trimmed.includes(')')) {
+              suggestions.push({
+                id: `digitalwrite-paren-${lineNum}`,
+                type: 'fix',
+                title: 'Fix digitalWrite syntax - add parentheses',
+                description: 'digitalWrite function needs parentheses',
+                code: trimmed.replace('digitalWrite', 'digitalWrite(pin, value)'),
+                line: lineNum,
+                confidence: 0.9
+              });
+            } else if (trimmed.includes('digitalWrite(') && !trimmed.includes(',')) {
+              // Try to fix common digitalWrite patterns
+              if (trimmed.match(/digitalWrite\(\s*\d+\s+\w+\s*\)/)) {
+                const fixed = trimmed.replace(/digitalWrite\((\s*\d+)\s+(\w+)\s*\)/, 'digitalWrite($1, $2)');
+                suggestions.push({
+                  id: `digitalwrite-comma-${lineNum}`,
+                  type: 'fix',
+                  title: 'Fix digitalWrite syntax - add comma',
+                  description: 'digitalWrite requires comma between pin and value',
+                  code: fixed,
+                  line: lineNum,
+                  confidence: 0.95
+                });
+              } else {
+                suggestions.push({
+                  id: `digitalwrite-comma-${lineNum}`,
+                  type: 'fix',
+                  title: 'Fix digitalWrite syntax',
+                  description: 'digitalWrite requires two parameters: digitalWrite(pin, value)',
+                  code: 'digitalWrite(pin, HIGH); // Example: replace with actual pin number',
+                  line: lineNum,
+                  confidence: 0.8
+                });
+              }
+            }
           }
 
           // Suggest Serial.begin if missing
@@ -148,9 +230,18 @@ export function AIAssistant({ code, errors, theme, onApplySuggestion }: AIAssist
 
   const handleApplySuggestion = (suggestion: AISuggestion) => {
     if (suggestion.code) {
+      const lines = code.split('\n');
+      const targetLineIndex = (suggestion.line || 1) - 1;
+      
+      // Get the original line content if it exists
+      let originalContent = '';
+      if (targetLineIndex >= 0 && targetLineIndex < lines.length) {
+        originalContent = lines[targetLineIndex];
+      }
+      
       const aiSuggestion: AIFixSuggestion = {
         line: suggestion.line || 1,
-        original: '',
+        original: originalContent,
         fixed: suggestion.code,
         explanation: suggestion.description
       };

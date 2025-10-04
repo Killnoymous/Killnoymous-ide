@@ -38,86 +38,172 @@ export function CodeEditor({ value, onChange, errors, theme, onCompile, onRealTi
     lines.forEach((line, index) => {
       const lineNum = index + 1;
       const trimmed = line.trim();
+      const original = line;
 
-      // Check for missing semicolons
-      if (trimmed && !trimmed.endsWith(';') && !trimmed.endsWith('{') && !trimmed.endsWith('}') &&
-          !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*') &&
-          !trimmed.includes('void setup') && !trimmed.includes('void loop') &&
-          !trimmed.includes('if (') && !trimmed.includes('else') && !trimmed.includes('for (') &&
-          !trimmed.includes('while (') && !trimmed.includes('do') && !trimmed.includes('switch (') &&
-          !trimmed.includes('case ') && !trimmed.includes('return') && !trimmed.includes('break') &&
-          !trimmed.includes('continue') && trimmed.length > 0) {
+      // Skip empty lines and comments
+      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+        return;
+      }
+
+      // Check for missing semicolons (more comprehensive)
+      const needsSemicolon = trimmed && 
+        !trimmed.endsWith(';') && 
+        !trimmed.endsWith('{') && 
+        !trimmed.endsWith('}') &&
+        !trimmed.includes('void setup') && 
+        !trimmed.includes('void loop') &&
+        !trimmed.includes('if (') && 
+        !trimmed.includes('else if') &&
+        !trimmed.includes('else') && 
+        !trimmed.includes('for (') &&
+        !trimmed.includes('while (') && 
+        !trimmed.includes('do') && 
+        !trimmed.includes('switch (') &&
+        !trimmed.includes('case ') && 
+        !trimmed.includes('default:') &&
+        !trimmed.includes('#include') &&
+        !trimmed.includes('#define') &&
+        !trimmed.startsWith('}') &&
+        (trimmed.includes('=') || 
+         trimmed.includes('pinMode') || 
+         trimmed.includes('digitalWrite') || 
+         trimmed.includes('analogWrite') ||
+         trimmed.includes('Serial.') ||
+         trimmed.includes('delay(') ||
+         trimmed.includes('return '));
+
+      if (needsSemicolon) {
         errors.push({
           line: lineNum,
-          column: line.length,
+          column: original.length,
           message: 'Expected `;` at end of statement',
           severity: 'error'
         });
       }
 
-      // Check for missing commas in function calls
-      if (trimmed.includes('pinMode') && !trimmed.includes('pinMode(')) {
-        errors.push({
-          line: lineNum,
-          column: trimmed.indexOf('pinMode') + 7,
-          message: 'pinMode function call missing opening parenthesis',
-          severity: 'error'
-        });
-      } else if (trimmed.includes('pinMode(') && !trimmed.includes(',')) {
-        errors.push({
-          line: lineNum,
-          column: trimmed.indexOf('pinMode(') + 7,
-          message: 'pinMode function call missing comma between parameters',
-          severity: 'error'
-        });
+      // Check pinMode syntax
+      if (trimmed.includes('pinMode')) {
+        if (!trimmed.includes('(') || !trimmed.includes(')')) {
+          errors.push({
+            line: lineNum,
+            column: trimmed.indexOf('pinMode'),
+            message: 'pinMode function call missing parentheses',
+            severity: 'error'
+          });
+        } else if (trimmed.includes('pinMode(') && !trimmed.includes(',')) {
+          const openParen = trimmed.indexOf('pinMode(') + 8;
+          const closeParen = trimmed.indexOf(')', openParen);
+          if (closeParen > openParen) {
+            const params = trimmed.substring(openParen, closeParen).trim();
+            if (params && !params.includes(',')) {
+              errors.push({
+                line: lineNum,
+                column: openParen,
+                message: 'pinMode requires two parameters separated by comma: pinMode(pin, mode)',
+                severity: 'error'
+              });
+            }
+          }
+        }
       }
 
-      if (trimmed.includes('digitalWrite') && !trimmed.includes('digitalWrite(')) {
-        errors.push({
-          line: lineNum,
-          column: trimmed.indexOf('digitalWrite') + 11,
-          message: 'digitalWrite function call missing opening parenthesis',
-          severity: 'error'
-        });
-      } else if (trimmed.includes('digitalWrite(') && !trimmed.includes(',')) {
-        errors.push({
-          line: lineNum,
-          column: trimmed.indexOf('digitalWrite(') + 11,
-          message: 'digitalWrite function call missing comma between parameters',
-          severity: 'error'
-        });
+      // Check digitalWrite syntax
+      if (trimmed.includes('digitalWrite')) {
+        if (!trimmed.includes('(') || !trimmed.includes(')')) {
+          errors.push({
+            line: lineNum,
+            column: trimmed.indexOf('digitalWrite'),
+            message: 'digitalWrite function call missing parentheses',
+            severity: 'error'
+          });
+        } else if (trimmed.includes('digitalWrite(') && !trimmed.includes(',')) {
+          const openParen = trimmed.indexOf('digitalWrite(') + 12;
+          const closeParen = trimmed.indexOf(')', openParen);
+          if (closeParen > openParen) {
+            const params = trimmed.substring(openParen, closeParen).trim();
+            if (params && !params.includes(',')) {
+              errors.push({
+                line: lineNum,
+                column: openParen,
+                message: 'digitalWrite requires two parameters: digitalWrite(pin, value)',
+                severity: 'error'
+              });
+            }
+          }
+        }
       }
 
-      if (trimmed.includes('analogWrite') && !trimmed.includes('analogWrite(')) {
-        errors.push({
-          line: lineNum,
-          column: trimmed.indexOf('analogWrite') + 10,
-          message: 'analogWrite function call missing opening parenthesis',
-          severity: 'error'
-        });
-      } else if (trimmed.includes('analogWrite(') && !trimmed.includes(',')) {
-        errors.push({
-          line: lineNum,
-          column: trimmed.indexOf('analogWrite(') + 10,
-          message: 'analogWrite function call missing comma between parameters',
-          severity: 'error'
-        });
+      // Check analogWrite syntax
+      if (trimmed.includes('analogWrite')) {
+        if (!trimmed.includes('(') || !trimmed.includes(')')) {
+          errors.push({
+            line: lineNum,
+            column: trimmed.indexOf('analogWrite'),
+            message: 'analogWrite function call missing parentheses',
+            severity: 'error'
+          });
+        } else if (trimmed.includes('analogWrite(') && !trimmed.includes(',')) {
+          const openParen = trimmed.indexOf('analogWrite(') + 11;
+          const closeParen = trimmed.indexOf(')', openParen);
+          if (closeParen > openParen) {
+            const params = trimmed.substring(openParen, closeParen).trim();
+            if (params && !params.includes(',')) {
+              errors.push({
+                line: lineNum,
+                column: openParen,
+                message: 'analogWrite requires two parameters: analogWrite(pin, value)',
+                severity: 'error'
+              });
+            }
+          }
+        }
       }
 
-      // Check for variable declaration issues
-      if (trimmed.includes('=') && !trimmed.includes('int ') && !trimmed.includes('float ') && 
-          !trimmed.includes('char ') && !trimmed.includes('bool ') && !trimmed.includes('String ') &&
-          !trimmed.includes('const ') && !trimmed.includes('static ') && 
-          !trimmed.includes('void setup') && !trimmed.includes('void loop')) {
+      // Check for missing variable types
+      if (trimmed.includes('=') && !trimmed.includes('==') && !trimmed.includes('!=') && 
+          !trimmed.includes('<=') && !trimmed.includes('>=')) {
         const equalIndex = trimmed.indexOf('=');
-        if (equalIndex > 0 && !trimmed.substring(0, equalIndex).includes(' ')) {
+        const beforeEqual = trimmed.substring(0, equalIndex).trim();
+        
+        // Check if it's a variable declaration without type
+        if (beforeEqual && !beforeEqual.includes(' ') && 
+            !trimmed.includes('int ') && !trimmed.includes('float ') && 
+            !trimmed.includes('char ') && !trimmed.includes('bool ') && 
+            !trimmed.includes('String ') && !trimmed.includes('const ') && 
+            !trimmed.includes('static ') && !trimmed.includes('unsigned ') &&
+            !beforeEqual.includes('.') && !beforeEqual.includes('[') &&
+            !trimmed.includes('void setup') && !trimmed.includes('void loop')) {
+          
           errors.push({
             line: lineNum,
             column: 0,
-            message: 'Variable declaration missing type (int, float, char, etc.)',
+            message: `Variable '${beforeEqual}' declaration missing type (int, float, char, etc.)`,
             severity: 'warning'
           });
         }
+      }
+
+      // Check for missing brackets
+      const openBrackets = (trimmed.match(/\(/g) || []).length;
+      const closeBrackets = (trimmed.match(/\)/g) || []).length;
+      if (openBrackets !== closeBrackets) {
+        errors.push({
+          line: lineNum,
+          column: trimmed.length,
+          message: 'Mismatched parentheses',
+          severity: 'error'
+        });
+      }
+
+      // Check for missing braces in control structures
+      if ((trimmed.includes('if (') || trimmed.includes('for (') || trimmed.includes('while (')) && 
+          !trimmed.includes('{') && !trimmed.endsWith(')')) {
+        errors.push({
+          line: lineNum,
+          column: trimmed.length,
+          message: 'Control structure missing opening brace {',
+          severity: 'warning'
+        });
       }
     });
 

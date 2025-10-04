@@ -240,18 +240,54 @@ function App() {
 
   const handleVerify = async () => {
     addConsoleMessage('info', 'Verifying code...');
-    const detectedErrors = ArduinoCompiler.analyze(code);
-    setErrors(detectedErrors);
+    
+    // Combine real-time errors with compiler analysis
+    const compilerErrors = ArduinoCompiler.analyze(code);
+    const allErrors = [...realTimeErrors, ...compilerErrors];
+    
+    // Remove duplicates based on line and message
+    const uniqueErrors = allErrors.filter((error, index, self) => 
+      index === self.findIndex(e => e.line === error.line && e.message === error.message)
+    );
+    
+    setErrors(uniqueErrors);
 
-    if (detectedErrors.length === 0) {
-      addConsoleMessage('success', 'Code verification passed! No errors found.');
+    if (uniqueErrors.length === 0) {
+      addConsoleMessage('success', '✅ Code verification passed! No errors found.');
     } else {
-      const errorCount = detectedErrors.filter(e => e.severity === 'error').length;
-      const warningCount = detectedErrors.filter(e => e.severity === 'warning').length;
-      addConsoleMessage('warning', `Found ${errorCount} error(s) and ${warningCount} warning(s)`);
-      detectedErrors.forEach(err => {
-        addConsoleMessage(err.severity, `Line ${err.line}: ${err.message}`);
-      });
+      const errorCount = uniqueErrors.filter(e => e.severity === 'error').length;
+      const warningCount = uniqueErrors.filter(e => e.severity === 'warning').length;
+      
+      if (errorCount > 0) {
+        addConsoleMessage('error', `❌ Found ${errorCount} error(s) and ${warningCount} warning(s)`);
+      } else {
+        addConsoleMessage('warning', `⚠️ Found ${warningCount} warning(s)`);
+      }
+      
+      // Group errors by type for better reporting
+      const errorsByType = uniqueErrors.reduce((acc, err) => {
+        const key = err.severity;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(err);
+        return acc;
+      }, {} as Record<string, CompilationError[]>);
+      
+      // Report errors first, then warnings
+      if (errorsByType.error) {
+        addConsoleMessage('error', '🔴 ERRORS:');
+        errorsByType.error.forEach(err => {
+          addConsoleMessage('error', `  Line ${err.line}: ${err.message}`);
+        });
+      }
+      
+      if (errorsByType.warning) {
+        addConsoleMessage('warning', '🟡 WARNINGS:');
+        errorsByType.warning.forEach(err => {
+          addConsoleMessage('warning', `  Line ${err.line}: ${err.message}`);
+        });
+      }
+      
+      addConsoleMessage('info', '💡 Tip: Use "Auto Fix" to get AI suggestions for fixing these issues.');
     }
   };
 
@@ -303,40 +339,56 @@ function App() {
   const handleApplyFix = (suggestion: AIFixSuggestion) => {
     try {
       const lines = code.split('\n');
+      const targetLineIndex = suggestion.line - 1;
       
-      // Validate the suggestion before applying
-      if (!AIHelper.validateSuggestion(code, suggestion)) {
-        addConsoleMessage('error', 'Cannot apply fix: suggestion is no longer valid for current code.');
+      // Ensure line index is valid
+      if (targetLineIndex < 0 || targetLineIndex >= lines.length) {
+        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Code has ${lines.length} lines.`);
         return;
       }
 
+      const currentLine = lines[targetLineIndex].trim();
+      
+      // If original is provided, check if it matches (with some flexibility)
       if (suggestion.original && suggestion.original.trim() !== '') {
-        // Replace existing line
-        if (lines[suggestion.line - 1] === suggestion.original) {
-          lines[suggestion.line - 1] = suggestion.fixed;
+        const originalTrimmed = suggestion.original.trim();
+        
+        // Check if current line contains the original text or is similar
+        if (currentLine === originalTrimmed || currentLine.includes(originalTrimmed.replace(/\s+/g, ' '))) {
+          // Replace the entire line with the fixed version
+          lines[targetLineIndex] = suggestion.fixed;
+          addConsoleMessage('success', `Replaced line ${suggestion.line}: "${currentLine}" → "${suggestion.fixed}"`);
         } else {
-          addConsoleMessage('warning', 'Code has changed since suggestion was generated. Applying fix anyway.');
-          lines[suggestion.line - 1] = suggestion.fixed;
+          // If original doesn't match exactly, still apply the fix but warn user
+          lines[targetLineIndex] = suggestion.fixed;
+          addConsoleMessage('warning', `Applied fix to line ${suggestion.line} (code may have changed): "${suggestion.fixed}"`);
         }
       } else {
-        // Insert new line
-        if (suggestion.line <= lines.length) {
-          lines.splice(suggestion.line - 1, 0, suggestion.fixed);
+        // No original provided - either replace current line or insert new
+        if (currentLine === '' || currentLine.length === 0) {
+          // Empty line - replace it
+          lines[targetLineIndex] = suggestion.fixed;
+          addConsoleMessage('success', `Added code at line ${suggestion.line}: "${suggestion.fixed}"`);
         } else {
-          // Add at the end
-          lines.push(suggestion.fixed);
+          // Non-empty line - replace it
+          lines[targetLineIndex] = suggestion.fixed;
+          addConsoleMessage('success', `Replaced line ${suggestion.line}: "${suggestion.fixed}"`);
         }
       }
       
       const newCode = lines.join('\n');
       setCode(newCode);
-      addConsoleMessage('success', `Applied fix at line ${suggestion.line}: ${suggestion.explanation}`);
       
-      // Clear the AI panel after successful application
-      setTimeout(() => {
-        setShowAIPanel(false);
-        setAiSuggestions([]);
-      }, 1000);
+      // Remove applied suggestion from the list
+      setAiSuggestions(prev => prev.filter(s => s !== suggestion));
+      
+      // If no more suggestions, close the panel
+      if (aiSuggestions.length <= 1) {
+        setTimeout(() => {
+          setShowAIPanel(false);
+          setAiSuggestions([]);
+        }, 500);
+      }
       
     } catch (error) {
       console.error('Error applying fix:', error);
