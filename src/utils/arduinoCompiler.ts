@@ -9,6 +9,7 @@ export class ArduinoCompiler {
     let hasLoop = false;
     let braceCount = 0;
     const unclosedBraces: number[] = [];
+    const functionDeclarations = new Set<string>();
 
     lines.forEach((line, index) => {
       const lineNum = index + 1;
@@ -29,6 +30,77 @@ export class ArduinoCompiler {
       }
 
       if (trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*')) {
+        
+        // Check for multiple statements on same line (critical error)
+        const semicolonCount = (trimmed.match(/;/g) || []).length;
+        if (semicolonCount > 1) {
+          errors.push({
+            line: lineNum,
+            column: 0,
+            message: 'SYNTAX ERROR: Multiple statements on same line. Each statement must be on a separate line.',
+            severity: 'error'
+          });
+          return; // Skip further analysis for this line
+        }
+
+        // Check for duplicate function declarations
+        if (trimmed.match(/^(void|int|float|char|bool|String)\s+\w+\s*\([^)]*\)\s*;/)) {
+          const funcMatch = trimmed.match(/^(void|int|float|char|bool|String)\s+(\w+)\s*\([^)]*\)\s*;/);
+          if (funcMatch) {
+            const funcName = funcMatch[2];
+            if (functionDeclarations.has(funcName)) {
+              errors.push({
+                line: lineNum,
+                column: 0,
+                message: `COMPILATION ERROR: Redefinition of function '${funcName}'. Function already declared.`,
+                severity: 'error'
+              });
+            } else {
+              functionDeclarations.add(funcName);
+            }
+          }
+        }
+
+        // Check for invalid function names and syntax
+        if (trimmed.includes('void ') && trimmed.includes('(') && trimmed.includes(')')) {
+          const funcMatch = trimmed.match(/void\s+(\w+)\s*\([^)]*\)/);
+          if (funcMatch) {
+            const funcName = funcMatch[1];
+            
+            // Check for very short or suspicious function names
+            if (funcName.length <= 3 && !['setup', 'loop'].includes(funcName)) {
+              errors.push({
+                line: lineNum,
+                column: 0,
+                message: `WARNING: Function name '${funcName}' is too short. Use descriptive names (e.g., 'blinkLED', 'readSensor').`,
+                severity: 'warning'
+              });
+            }
+
+            // Check for invalid characters in function names
+            if (!funcName.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+              errors.push({
+                line: lineNum,
+                column: 0,
+                message: `SYNTAX ERROR: Invalid function name '${funcName}'. Function names must start with letter or underscore.`,
+                severity: 'error'
+              });
+            }
+          }
+
+          // Check function declaration syntax
+          if (trimmed.endsWith(';')) {
+            if (!trimmed.match(/^void\s+\w+\s*\([^)]*\)\s*;$/)) {
+              errors.push({
+                line: lineNum,
+                column: 0,
+                message: 'SYNTAX ERROR: Invalid function declaration syntax. Expected: void functionName();',
+                severity: 'error'
+              });
+            }
+          }
+        }
+
         // Check for missing semicolons
         if (
           !trimmed.endsWith(';') &&
@@ -52,7 +124,7 @@ export class ArduinoCompiler {
           errors.push({
             line: lineNum,
             column: line.length,
-            message: 'Expected `;` at end of statement',
+            message: 'SYNTAX ERROR: Expected `;` at end of statement',
             severity: 'error'
           });
         }
@@ -62,7 +134,7 @@ export class ArduinoCompiler {
           errors.push({
             line: lineNum,
             column: trimmed.indexOf('pinMode') + 7,
-            message: 'pinMode function call missing opening parenthesis',
+            message: 'SYNTAX ERROR: pinMode function call missing opening parenthesis',
             severity: 'error'
           });
         }
@@ -71,7 +143,7 @@ export class ArduinoCompiler {
           errors.push({
             line: lineNum,
             column: trimmed.indexOf('digitalWrite') + 11,
-            message: 'digitalWrite function call missing opening parenthesis',
+            message: 'SYNTAX ERROR: digitalWrite function call missing opening parenthesis',
             severity: 'error'
           });
         }
@@ -80,7 +152,7 @@ export class ArduinoCompiler {
           errors.push({
             line: lineNum,
             column: trimmed.indexOf('digitalRead') + 10,
-            message: 'digitalRead function call missing opening parenthesis',
+            message: 'SYNTAX ERROR: digitalRead function call missing opening parenthesis',
             severity: 'error'
           });
         }
@@ -95,10 +167,22 @@ export class ArduinoCompiler {
             errors.push({
               line: lineNum,
               column: 0,
-              message: 'Variable declaration missing type (int, float, char, etc.)',
+              message: 'WARNING: Variable declaration missing type (int, float, char, etc.)',
               severity: 'warning'
             });
           }
+        }
+
+        // Check for mismatched parentheses
+        const openParens = (trimmed.match(/\(/g) || []).length;
+        const closeParens = (trimmed.match(/\)/g) || []).length;
+        if (openParens !== closeParens) {
+          errors.push({
+            line: lineNum,
+            column: 0,
+            message: 'SYNTAX ERROR: Mismatched parentheses',
+            severity: 'error'
+          });
         }
       }
     });

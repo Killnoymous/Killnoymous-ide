@@ -34,6 +34,7 @@ export function CodeEditor({ value, onChange, errors, theme, onCompile, onRealTi
   const analyzeCodeRealTime = (code: string): CompilationError[] => {
     const errors: CompilationError[] = [];
     const lines = code.split('\n');
+    const functionDeclarations = new Set<string>();
 
     lines.forEach((line, index) => {
       const lineNum = index + 1;
@@ -43,6 +44,58 @@ export function CodeEditor({ value, onChange, errors, theme, onCompile, onRealTi
       // Skip empty lines and comments
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
         return;
+      }
+
+      // Check for multiple statements on same line (like void oop();void oop();)
+      const semicolonCount = (trimmed.match(/;/g) || []).length;
+      if (semicolonCount > 1) {
+        errors.push({
+          line: lineNum,
+          column: 0,
+          message: 'Multiple statements on same line. Each statement should be on a separate line.',
+          severity: 'error'
+        });
+      }
+
+      // Check for duplicate function declarations
+      if (trimmed.match(/^(void|int|float|char|bool|String)\s+\w+\s*\([^)]*\)\s*;/)) {
+        const funcMatch = trimmed.match(/^(void|int|float|char|bool|String)\s+(\w+)\s*\([^)]*\)\s*;/);
+        if (funcMatch) {
+          const funcName = funcMatch[2];
+          if (functionDeclarations.has(funcName)) {
+            errors.push({
+              line: lineNum,
+              column: 0,
+              message: `Duplicate function declaration: '${funcName}' is already declared`,
+              severity: 'error'
+            });
+          } else {
+            functionDeclarations.add(funcName);
+          }
+        }
+      }
+
+      // Check for invalid function names (Arduino specific)
+      if (trimmed.match(/^void\s+\w+\s*\([^)]*\)\s*;/)) {
+        const funcMatch = trimmed.match(/^void\s+(\w+)\s*\([^)]*\)\s*;/);
+        if (funcMatch) {
+          const funcName = funcMatch[1];
+          const validArduinoFunctions = ['setup', 'loop'];
+          const commonFunctions = ['digitalWrite', 'digitalRead', 'analogWrite', 'analogRead', 'pinMode', 'delay'];
+          
+          // Check if it's not a valid Arduino function and looks suspicious
+          if (!validArduinoFunctions.includes(funcName) && 
+              !commonFunctions.includes(funcName) && 
+              funcName.length < 4 && 
+              !funcName.match(/^[a-zA-Z][a-zA-Z0-9_]*$/)) {
+            errors.push({
+              line: lineNum,
+              column: 0,
+              message: `Suspicious function name '${funcName}'. Arduino functions should have descriptive names.`,
+              severity: 'warning'
+            });
+          }
+        }
       }
 
       // Check for missing semicolons (more comprehensive)
@@ -79,6 +132,32 @@ export function CodeEditor({ value, onChange, errors, theme, onCompile, onRealTi
           message: 'Expected `;` at end of statement',
           severity: 'error'
         });
+      }
+
+      // Check for syntax errors in function declarations
+      if (trimmed.includes('void ') && trimmed.includes('(') && trimmed.includes(')')) {
+        // Check if it's a proper function declaration or definition
+        if (trimmed.endsWith(';')) {
+          // Function declaration - check syntax
+          if (!trimmed.match(/^void\s+\w+\s*\([^)]*\)\s*;$/)) {
+            errors.push({
+              line: lineNum,
+              column: 0,
+              message: 'Invalid function declaration syntax',
+              severity: 'error'
+            });
+          }
+        } else if (trimmed.endsWith('{')) {
+          // Function definition - check syntax
+          if (!trimmed.match(/^void\s+\w+\s*\([^)]*\)\s*\{$/)) {
+            errors.push({
+              line: lineNum,
+              column: 0,
+              message: 'Invalid function definition syntax',
+              severity: 'error'
+            });
+          }
+        }
       }
 
       // Check pinMode syntax
@@ -248,7 +327,7 @@ export function CodeEditor({ value, onChange, errors, theme, onCompile, onRealTi
     const monaco = (window as any).monaco;
     if (monaco) {
       monaco.languages.registerCompletionItemProvider('cpp', {
-        provideCompletionItems: (model: any, position: any) => {
+        provideCompletionItems: (_model: any, _position: any) => {
           const suggestions = [
             {
               label: 'pinMode',
@@ -343,7 +422,7 @@ export function CodeEditor({ value, onChange, errors, theme, onCompile, onRealTi
         // Enhanced options for better experience
         renderLineHighlight: 'all',
         cursorBlinking: 'smooth',
-        cursorSmoothCaretAnimation: true,
+        cursorSmoothCaretAnimation: 'on',
         smoothScrolling: true,
         mouseWheelZoom: true,
         // Real-time error highlighting
