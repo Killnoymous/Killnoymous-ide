@@ -341,43 +341,59 @@ function App() {
       const lines = code.split('\n');
       const targetLineIndex = suggestion.line - 1;
       
-      // Ensure line index is valid
-      if (targetLineIndex < 0 || targetLineIndex >= lines.length) {
-        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Code has ${lines.length} lines.`);
+      // Handle different cases for line numbers
+      if (suggestion.line < 1) {
+        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Line numbers start from 1.`);
         return;
       }
-
-      const currentLine = lines[targetLineIndex].trim();
       
-      // If original is provided, check if it matches (with some flexibility)
-      if (suggestion.original && suggestion.original.trim() !== '') {
-        const originalTrimmed = suggestion.original.trim();
+      // If line number is beyond current lines, we're appending
+      if (suggestion.line > lines.length) {
+        // Append new lines
+        const newLines = [...lines];
         
-        // Check if current line contains the original text or is similar
-        if (currentLine === originalTrimmed || currentLine.includes(originalTrimmed.replace(/\s+/g, ' '))) {
-          // Replace the entire line with the fixed version
-          lines[targetLineIndex] = suggestion.fixed;
-          addConsoleMessage('success', `Replaced line ${suggestion.line}: "${currentLine}" → "${suggestion.fixed}"`);
-        } else {
-          // If original doesn't match exactly, still apply the fix but warn user
-          lines[targetLineIndex] = suggestion.fixed;
-          addConsoleMessage('warning', `Applied fix to line ${suggestion.line} (code may have changed): "${suggestion.fixed}"`);
+        // Add empty lines if needed to reach the target line
+        while (newLines.length < suggestion.line - 1) {
+          newLines.push('');
         }
+        
+        // Add the fixed content
+        if (suggestion.fixed.includes('\n')) {
+          // Multi-line content
+          const fixedLines = suggestion.fixed.split('\n');
+          newLines.push(...fixedLines);
+        } else {
+          newLines.push(suggestion.fixed);
+        }
+        
+        const newCode = newLines.join('\n');
+        setCode(newCode);
+        addConsoleMessage('success', `Added code at end: "${suggestion.fixed.replace(/\n/g, ' ')}"`);
+        
       } else {
-        // No original provided - either replace current line or insert new
-        if (currentLine === '' || currentLine.length === 0) {
-          // Empty line - replace it
-          lines[targetLineIndex] = suggestion.fixed;
-          addConsoleMessage('success', `Added code at line ${suggestion.line}: "${suggestion.fixed}"`);
+        // Line exists, replace or modify it
+        const currentLine = lines[targetLineIndex] || '';
+        
+        // Handle empty fixed content (deletion)
+        if (suggestion.fixed.trim() === '') {
+          lines.splice(targetLineIndex, 1);
+          addConsoleMessage('success', `Removed line ${suggestion.line}: "${currentLine}"`);
         } else {
-          // Non-empty line - replace it
-          lines[targetLineIndex] = suggestion.fixed;
-          addConsoleMessage('success', `Replaced line ${suggestion.line}: "${suggestion.fixed}"`);
+          // Handle multi-line fixes
+          if (suggestion.fixed.includes('\n')) {
+            const fixedLines = suggestion.fixed.split('\n');
+            lines.splice(targetLineIndex, 1, ...fixedLines);
+            addConsoleMessage('success', `Replaced line ${suggestion.line} with ${fixedLines.length} lines`);
+          } else {
+            // Single line replacement
+            lines[targetLineIndex] = suggestion.fixed;
+            addConsoleMessage('success', `Fixed line ${suggestion.line}: "${suggestion.fixed}"`);
+          }
         }
+        
+        const newCode = lines.join('\n');
+        setCode(newCode);
       }
-      
-      const newCode = lines.join('\n');
-      setCode(newCode);
       
       // Remove applied suggestion from the list
       setAiSuggestions(prev => prev.filter(s => s !== suggestion));
