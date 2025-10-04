@@ -28,6 +28,7 @@ function App() {
   const [realTimeErrors, setRealTimeErrors] = useState<CompilationError[]>([]);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const serialUploader = useRef<SerialUploader>(new SerialUploader());
+  const isApplyingFix = useRef<boolean>(false);
 
   const addConsoleMessage = useCallback((type: ConsoleMessage['type'], message: string) => {
     const newMessage: ConsoleMessage = {
@@ -341,94 +342,82 @@ function App() {
 
   const handleApplyFix = (suggestion: AIFixSuggestion) => {
     try {
-      console.log('🔧 Applying fix:', suggestion);
-      const lines = code.split('\n');
+      console.log('🔧 STARTING FIX APPLICATION');
+      console.log('📋 Suggestion:', suggestion);
+      
+      // Set flag to prevent interference
+      isApplyingFix.current = true;
+      
+      const originalCode = code;
+      const lines = originalCode.split('\n');
       const targetLineIndex = suggestion.line - 1;
       
       console.log(`📍 Target line ${suggestion.line} (index ${targetLineIndex})`);
-      console.log(`📝 Current code has ${lines.length} lines`);
+      console.log(`📝 Original code has ${lines.length} lines`);
       console.log(`🎯 Current line content: "${lines[targetLineIndex] || 'UNDEFINED'}"`);
       console.log(`✨ Suggestion fixed: "${suggestion.fixed}"`);
       console.log(`📋 Suggestion original: "${suggestion.original}"`);
       
-      // Handle different cases for line numbers
-      if (suggestion.line < 1) {
-        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Line numbers start from 1.`);
+      // Validate line number
+      if (suggestion.line < 1 || suggestion.line > lines.length) {
+        addConsoleMessage('error', `Invalid line number: ${suggestion.line}. Code has ${lines.length} lines.`);
+        isApplyingFix.current = false;
         return;
       }
       
-      // If line number is beyond current lines, we're appending
-      if (suggestion.line > lines.length) {
-        console.log('📌 Appending new content beyond current lines');
-        // Append new lines
-        const newLines = [...lines];
-        
-        // Add empty lines if needed to reach the target line
-        while (newLines.length < suggestion.line - 1) {
-          newLines.push('');
-        }
-        
-        // Add the fixed content
-        if (suggestion.fixed.includes('\n')) {
-          // Multi-line content
-          const fixedLines = suggestion.fixed.split('\n');
-          newLines.push(...fixedLines);
-        } else {
-          newLines.push(suggestion.fixed);
-        }
-        
-        const newCode = newLines.join('\n');
-        setCode(newCode);
-        addConsoleMessage('success', `Added code at end: "${suggestion.fixed.replace(/\n/g, ' ')}"`);
-        
-      } else {
-        // Line exists, replace or modify it
-        const currentLine = lines[targetLineIndex] || '';
-        console.log('🔄 Replacing existing line');
-        
-        // Handle empty fixed content (deletion)
-        if (suggestion.fixed.trim() === '') {
-          console.log('🗑️ Deleting line');
-          lines.splice(targetLineIndex, 1);
-          addConsoleMessage('success', `Removed line ${suggestion.line}: "${currentLine}"`);
-        } else {
-          // Handle multi-line fixes
-          if (suggestion.fixed.includes('\n')) {
-            console.log('📄 Multi-line replacement');
-            const fixedLines = suggestion.fixed.split('\n');
-            lines.splice(targetLineIndex, 1, ...fixedLines);
-            addConsoleMessage('success', `Replaced line ${suggestion.line} with ${fixedLines.length} lines`);
-          } else {
-            // Single line replacement - THIS IS THE KEY PART
-            console.log(`🎯 Single line replacement: "${currentLine}" → "${suggestion.fixed}"`);
-            lines[targetLineIndex] = suggestion.fixed;
-            addConsoleMessage('success', `Fixed line ${suggestion.line}: "${suggestion.fixed}"`);
-          }
-        }
-        
-        const newCode = lines.join('\n');
-        console.log('✅ Setting new code');
-        setCode(newCode);
-      }
+      // Create a copy of lines for modification
+      const newLines = [...lines];
+      const currentLine = newLines[targetLineIndex];
       
-      // Remove applied suggestion from the list
-      setAiSuggestions(prev => prev.filter(s => s !== suggestion));
+      console.log(`🔍 BEFORE: Line ${suggestion.line} = "${currentLine}"`);
       
-      // If no more suggestions, close the panel
-      if (aiSuggestions.length <= 1) {
-        setTimeout(() => {
-          setShowAIPanel(false);
-          setAiSuggestions([]);
-        }, 500);
-      }
+      // SIMPLE REPLACEMENT - just replace the line
+      newLines[targetLineIndex] = suggestion.fixed;
+      
+      console.log(`🔍 AFTER: Line ${suggestion.line} = "${newLines[targetLineIndex]}"`);
+      
+      const newCode = newLines.join('\n');
+      
+      console.log('📊 CODE COMPARISON:');
+      console.log('OLD CODE:', originalCode);
+      console.log('NEW CODE:', newCode);
+      
+      // Apply the change with a delay to ensure proper state update
+      setTimeout(() => {
+        setCode(newCode);
+        isApplyingFix.current = false;
+        
+        addConsoleMessage('success', `✅ Replaced line ${suggestion.line}: "${currentLine}" → "${suggestion.fixed}"`);
+        
+        // Remove applied suggestion from the list
+        setAiSuggestions(prev => prev.filter(s => s !== suggestion));
+        
+        // If no more suggestions, close the panel
+        if (aiSuggestions.length <= 1) {
+          setTimeout(() => {
+            setShowAIPanel(false);
+            setAiSuggestions([]);
+          }, 500);
+        }
+      }, 100);
       
     } catch (error) {
-      console.error('Error applying fix:', error);
+      console.error('❌ Error applying fix:', error);
       addConsoleMessage('error', 'Failed to apply fix. Please try again or fix manually.');
+      isApplyingFix.current = false;
     }
   };
 
   const handleCodeChange = (newCode: string) => {
+    if (isApplyingFix.current) {
+      console.log('🚫 Ignoring code change during fix application');
+      return;
+    }
+    
+    console.log('📝 CODE CHANGE DETECTED:');
+    console.log('Previous code length:', code.length);
+    console.log('New code length:', newCode.length);
+    console.log('New code:', newCode);
     setCode(newCode);
   };
 
